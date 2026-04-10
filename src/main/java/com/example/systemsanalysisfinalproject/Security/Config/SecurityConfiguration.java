@@ -29,22 +29,23 @@ public class SecurityConfiguration {
         this.authenticationProvider = authenticationProvider;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
-
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf
-                        .disable() // Disable CSRF for H2 console
+                        .disable()
                 )
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
                                 "/api/v1/auth/**",
                                 "/api/v1/demo/**",
-                                "/h2-console/**", // Allow H2 console access
-                                "/swagger-ui/**", // Allow Swagger UI access
-                                "/api-docs/**", // Allow OpenAPI/Swagger documentation access
-                                "/swagger-resources/**", // Allow Swagger resources
-                                "/webjars/**" // Allow webjars (used by Swagger)
+                                "/h2-console/**",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/api-docs/**",
+                                "/v3/api-docs/**",
+                                "/swagger-resources/**",
+                                "/webjars/**"
                         ).permitAll()
                         .requestMatchers("/api/v1/users/my-profile/**").authenticated()
                         .requestMatchers("/api/v1/events/my-events/**").authenticated()
@@ -57,12 +58,45 @@ public class SecurityConfiguration {
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .headers(headers -> headers
                         .frameOptions(frameOptions -> frameOptions
-                                .disable() // Disable X-Frame-Options for H2 console
+                                .disable()
                         )
                 );
 
         return http.build();
     }
+//    @Bean
+//    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+//        http
+//                .csrf(csrf -> csrf
+//                        .disable() // Disable CSRF for H2 console
+//                )
+//                .authorizeHttpRequests(authorize -> authorize
+//                        .requestMatchers(
+//                                "/api/v1/auth/**",
+//                                "/api/v1/demo/**",
+//                                "/h2-console/**", // Allow H2 console access
+//                                "/swagger-ui/**", // Allow Swagger UI access
+//                                "/api-docs/**", // Allow OpenAPI/Swagger documentation access
+//                                "/swagger-resources/**", // Allow Swagger resources
+//                                "/webjars/**" // Allow webjars (used by Swagger)
+//                        ).permitAll()
+//                        .requestMatchers("/api/v1/users/my-profile/**").authenticated()
+//                        .requestMatchers("/api/v1/events/my-events/**").authenticated()
+//                        .anyRequest().authenticated()
+//                )
+//                .sessionManagement(session -> session
+//                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+//                )
+//                .authenticationProvider(authenticationProvider)
+//                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+//                .headers(headers -> headers
+//                        .frameOptions(frameOptions -> frameOptions
+//                                .disable() // Disable X-Frame-Options for H2 console
+//                        )
+//                );
+//
+//        return http.build();
+//    }
 
 
     @Bean
