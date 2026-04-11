@@ -8,6 +8,7 @@ import com.example.systemsanalysisfinalproject.Security.DTOs.Request.VerifyUserR
 import com.example.systemsanalysisfinalproject.Security.Repository.EventRepository;
 import com.example.systemsanalysisfinalproject.Security.Repository.UserRepository;
 
+import com.example.systemsanalysisfinalproject.Service.ShelfService;
 import jakarta.mail.MessagingException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class AuthenticationService {
     private final AuthenticationManager authenticationManager;
     private final EmailService emailService;
     private final EventRepository eventRepository;
+    private final ShelfService shelfService; // Inject ShelfService
 
     public User signup(UserRegisterRequest input) {
         User user = User.builder()
@@ -93,14 +95,14 @@ public class AuthenticationService {
                 user.setVerificationCode(null);
                 user.setVerificationCodeExpiresAt(null);
                 userRepository.save(user);
+                shelfService.createDefaultShelves(user);
+
                 UserEvent event = UserEvent.builder()
                         .eventTime(LocalDateTime.now())
                         .eventType(EventType.USER_VERIFIED)
                         .user(user)
                         .build();
                 UserEvent savedEvent = eventRepository.save(event);
-
-
 
             } else {
                 throw new RuntimeException("Invalid verification code");
