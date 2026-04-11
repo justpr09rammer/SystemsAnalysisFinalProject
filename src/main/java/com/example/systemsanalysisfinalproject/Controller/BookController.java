@@ -47,12 +47,17 @@ public class BookController {
  
     @Operation(summary = "Search books by title or author")
     @GetMapping("/search")
-    public Page<BookResponse> searchBooks(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return bookService.searchBooks(q, PageRequest.of(page, size));
+
+    public List<BookResponse> searchBooks(@RequestParam String q) {
+        return bookService.searchBooks(q);
     }
+//    @GetMapping("/search")
+//    public Page<BookResponse> searchBooks(
+//            @RequestParam String q,
+//            @RequestParam(defaultValue = "0") int page,
+//            @RequestParam(defaultValue = "20") int size) {
+//        return bookService.searchBooks(q, PageRequest.of(page, size));
+//    }
  
     @Operation(summary = "Get top-rated books")
     @GetMapping("/top-rated")

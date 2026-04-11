@@ -15,9 +15,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -53,10 +55,83 @@ public class BookService {
         return enrichBook(book);
     }
 
-    @Transactional(readOnly = true)
-    public Page<BookResponse> searchBooks(String query, Pageable pageable) {
-        Page<Book> books = bookRepository.search(query, pageable);
-        return books.map(this::enrichBook);
+    //    @Transactional(readOnly = true)
+//    public Page<BookResponse> searchBooks(String query, Pageable pageable) {
+//        Page<Book> books = bookRepository.search(query, pageable);
+//        return books.map(this::enrichBook);
+//    }
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<BookResponse> searchBooks(String query) {
+        try {
+            String url = OPEN_LIBRARY_SEARCH + query.replace(" ", "+") + "&fields=key,title,author_name,cover_i,first_publish_year,language,number_of_pages_median,ratings_average,ratings_count,isbn";
+
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+            JsonNode root = objectMapper.readTree(response.getBody());
+            JsonNode docs = root.path("docs");
+
+            List<BookResponse> results = new ArrayList<>();
+
+            if (docs.isArray()) {
+                for (JsonNode doc : docs) {
+                    // Map API doc -> Book Entity
+                    Book book = mapToBookModel(doc);
+
+                    // Map Book Entity -> BookResponse DTO
+                    results.add(enrichBook(book));
+                }
+            }
+            return results;
+        } catch (Exception e) {
+            logger.error("Search failed", e);
+            return Collections.emptyList();
+        }
+    }
+
+    private Book mapToBookModel(JsonNode doc) {
+        Book book = Book.builder()
+                .title(doc.path("title").asText())
+                .openLibraryId(doc.path("key").asText().replace("/works/", "")) // Extracting ID
+                .description(doc.path("first_sentence").isArray() ? doc.path("first_sentence").get(0).asText() : null)
+                .pageCount(doc.path("edition_count").asInt()) // OpenLibrary search uses edition_count or median
+                .averageRating(doc.path("ratings_average").asDouble(0.0))
+                .ratingsCount(doc.path("ratings_count").asInt(0))
+                .coverImageUrl(doc.has("cover_i") ?
+                        "https://covers.openlibrary.org/b/id/" + doc.get("cover_i").asInt() + "-L.jpg" : null)
+                .build();
+
+        // 1. Map ISBNs (OpenLibrary usually provides arrays)
+        if (doc.has("isbn")) {
+            JsonNode isbns = doc.get("isbn");
+            if (isbns.isArray() && isbns.size() > 0) {
+                // Very basic logic: take the first one or filter by length
+                book.setIsbn13(isbns.get(0).asText());
+            }
+        }
+
+        // 2. Map Language (Usually a list of codes like ["eng", "spa"])
+        if (doc.has("language")) {
+            book.setLanguage(doc.get("language").path(0).asText());
+        }
+
+        // 3. Map Published Date
+        if (doc.has("first_publish_year")) {
+            // OpenLibrary search gives year; LocalDate needs month/day so we default to Jan 1st
+            int year = doc.get("first_publish_year").asInt();
+            book.setPublishedDate(LocalDate.of(year, 1, 1));
+        }
+
+        // 4. Map Authors (ManyToMany)
+        if (doc.has("author_name")) {
+            List<Author> authorList = new ArrayList<>();
+            doc.get("author_name").forEach(name -> {
+                Author author = new Author();
+                author.setName(name.asText());
+                authorList.add(author);
+            });
+            book.setAuthors(authorList);
+        }
+
+        return book;
     }
 
     @Transactional(readOnly = true)
