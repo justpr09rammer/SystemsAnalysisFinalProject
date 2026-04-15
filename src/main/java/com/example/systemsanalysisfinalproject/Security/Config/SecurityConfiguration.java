@@ -70,9 +70,10 @@ public class SecurityConfiguration {
 
                         // ── Auth endpoints (public) ────────────────────────────
                         .requestMatchers("/api/v1/auth/**").permitAll()
-
+                        .requestMatchers(HttpMethod.GET, "/api/v1/books/search").permitAll()
                         // ── Books: read-only is public, write needs ADMIN ──────
                         .requestMatchers(HttpMethod.GET,
+                                "/api/v1/books/search",
                                 "/api/v1/books/**",
                                 "/api/v1/authors/**",
                                 "/api/v1/genres/**"

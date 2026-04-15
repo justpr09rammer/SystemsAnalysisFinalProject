@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -51,7 +52,8 @@ public class BookService {
 
     @Transactional(readOnly = true)
     public BookResponse getBookById(Long bookId) {
-        Book book = findBookOrThrow(bookId);
+        Book book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new NoSuchElementException("Book not found with id: " + bookId));
         return enrichBook(book);
     }
 
@@ -59,80 +61,128 @@ public class BookService {
 //    public Page<BookResponse> searchBooks(String query, Pageable pageable) {
 //        Page<Book> books = bookRepository.search(query, pageable);
 //        return books.map(this::enrichBook);
+////    }
+//    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+//    public List<BookResponse> searchBooks(String query) {
+//        try {
+//            String url = OPEN_LIBRARY_SEARCH + query.replace(" ", "+") + "&fields=key,title,author_name,cover_i,first_publish_year,language,number_of_pages_median,ratings_average,ratings_count,isbn";
+//
+//            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+//            JsonNode root = objectMapper.readTree(response.getBody());
+//            JsonNode docs = root.path("docs");
+//
+//            List<BookResponse> results = new ArrayList<>();
+//
+//            if (docs.isArray()) {
+//                for (JsonNode doc : docs) {
+//                    // Map API doc -> Book Entity
+//                    Book book = mapToBookModel(doc);
+//
+//                    // Map Book Entity -> BookResponse DTO
+//                    results.add(enrichBook(book));
+//                }
+//            }
+//            return results;
+//        } catch (Exception e) {
+//            logger.error("Search failed", e);
+//            return Collections.emptyList();
+//        }
 //    }
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @Transactional(readOnly = true)
     public List<BookResponse> searchBooks(String query) {
-        try {
-            String url = OPEN_LIBRARY_SEARCH + query.replace(" ", "+") + "&fields=key,title,author_name,cover_i,first_publish_year,language,number_of_pages_median,ratings_average,ratings_count,isbn";
 
-            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
-            JsonNode root = objectMapper.readTree(response.getBody());
-            JsonNode docs = root.path("docs");
+        Pageable pageable = PageRequest.of(0, 20);
 
-            List<BookResponse> results = new ArrayList<>();
+        Page<Book> bookPage = bookRepository.search(query, pageable);
 
-            if (docs.isArray()) {
-                for (JsonNode doc : docs) {
-                    // Map API doc -> Book Entity
-                    Book book = mapToBookModel(doc);
-
-                    // Map Book Entity -> BookResponse DTO
-                    results.add(enrichBook(book));
-                }
-            }
-            return results;
-        } catch (Exception e) {
-            logger.error("Search failed", e);
-            return Collections.emptyList();
-        }
+        return bookPage.getContent()
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
     }
+    private BookResponse mapToResponse(Book book) {
+        return BookResponse.builder()
+                .id(book.getId())
+                .title(book.getTitle())
+                .description(book.getDescription())
+                .coverImageUrl(book.getCoverImageUrl())
+                .isbn10(book.getIsbn10())
+                .isbn13(book.getIsbn13())
+                .pageCount(book.getPageCount())
+                .publishedDate(book.getPublishedDate())
+                .language(book.getLanguage())
+                .averageRating(book.getAverageRating())
+                .ratingsCount(book.getRatingsCount())
 
-    private Book mapToBookModel(JsonNode doc) {
-        Book book = Book.builder()
-                .title(doc.path("title").asText())
-                .openLibraryId(doc.path("key").asText().replace("/works/", "")) // Extracting ID
-                .description(doc.path("first_sentence").isArray() ? doc.path("first_sentence").get(0).asText() : null)
-                .pageCount(doc.path("edition_count").asInt()) // OpenLibrary search uses edition_count or median
-                .averageRating(doc.path("ratings_average").asDouble(0.0))
-                .ratingsCount(doc.path("ratings_count").asInt(0))
-                .coverImageUrl(doc.has("cover_i") ?
-                        "https://covers.openlibrary.org/b/id/" + doc.get("cover_i").asInt() + "-L.jpg" : null)
+                .authors(
+                        book.getAuthors() == null
+                                ? Collections.emptyList()
+                                : book.getAuthors().stream().toList()
+                )
+
+                .genres(
+                        book.getGenres() == null
+                                ? Collections.emptyList()
+                                : book.getGenres().stream().toList()
+                )
+                .userShelves(Collections.emptyList())
+                .userRating(null)
+                .userReadingPercent(null)
                 .build();
-
-        // 1. Map ISBNs (OpenLibrary usually provides arrays)
-        if (doc.has("isbn")) {
-            JsonNode isbns = doc.get("isbn");
-            if (isbns.isArray() && isbns.size() > 0) {
-                // Very basic logic: take the first one or filter by length
-                book.setIsbn13(isbns.get(0).asText());
-            }
-        }
-
-        // 2. Map Language (Usually a list of codes like ["eng", "spa"])
-        if (doc.has("language")) {
-            book.setLanguage(doc.get("language").path(0).asText());
-        }
-
-        // 3. Map Published Date
-        if (doc.has("first_publish_year")) {
-            // OpenLibrary search gives year; LocalDate needs month/day so we default to Jan 1st
-            int year = doc.get("first_publish_year").asInt();
-            book.setPublishedDate(LocalDate.of(year, 1, 1));
-        }
-
-        // 4. Map Authors (ManyToMany)
-        if (doc.has("author_name")) {
-            List<Author> authorList = new ArrayList<>();
-            doc.get("author_name").forEach(name -> {
-                Author author = new Author();
-                author.setName(name.asText());
-                authorList.add(author);
-            });
-            book.setAuthors(authorList);
-        }
-
-        return book;
     }
+//
+//    private Book mapToBookModel(JsonNode doc) {
+//        Book book = Book.builder()
+//                .title(doc.path("title").asText())
+//                .openLibraryId(doc.path("key").asText().replace("/works/", "")) // Extracting ID
+//                .description(doc.path("first_sentence").isArray() ? doc.path("first_sentence").get(0).asText() : null)
+//                .pageCount(doc.path("edition_count").asInt()) // OpenLibrary search uses edition_count or median
+//                .averageRating(doc.path("ratings_average").asDouble(0.0))
+//                .ratingsCount(doc.path("ratings_count").asInt(0))
+//                .coverImageUrl(doc.has("cover_i") ?
+//                        "https://covers.openlibrary.org/b/id/" + doc.get("cover_i").asInt() + "-L.jpg" : null)
+//                .build();
+//
+//        // 1. Map ISBNs (OpenLibrary usually provides arrays)
+//        if (doc.has("isbn")) {
+//            JsonNode isbns = doc.get("isbn");
+//            if (isbns.isArray() && isbns.size() > 0) {
+//                // Very basic logic: take the first one or filter by length
+//                book.setIsbn13(isbns.get(0).asText());
+//            }
+//        }
+//
+//
+//
+//        // 2. Map Language (Usually a list of codes like ["eng", "spa"])
+//        if (doc.has("language")) {
+//            book.setLanguage(doc.get("language").path(0).asText());
+//        }
+//        if (doc.has("language")) {
+//            book.setLanguage(doc.get("language").path(0).asText());
+//        }
+//
+//        // 3. Map Published Date
+//        if (doc.has("first_publish_year")) {
+//            // OpenLibrary search gives year; LocalDate needs month/day so we default to Jan 1st
+//            int year = doc.get("first_publish_year").asInt();
+//            book.setPublishedDate(LocalDate.of(year, 1, 1));
+//        }
+//
+//        // 4. Map Authors (ManyToMany)
+//        if (doc.has("author_name")) {
+//            List<Author> authorList = new ArrayList<>();
+//            doc.get("author_name").forEach(name -> {
+//                Author author = new Author();
+//
+//                author.setName(name.asText());
+//                authorList.add(author);
+//            });
+//            book.setAuthors(authorList);
+//        }
+//
+//        return book;
+//    }
 
     @Transactional(readOnly = true)
     public Page<Book> findByGenre(Long genreId, Pageable pageable) {

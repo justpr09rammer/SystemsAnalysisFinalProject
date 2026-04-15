@@ -44,13 +44,13 @@ public class BookController {
     public BookResponse getBookById(@PathVariable Long bookId) {
         return bookService.getBookById(bookId);
     }
- 
+
     @Operation(summary = "Search books by title or author")
     @GetMapping("/search")
-
     public List<BookResponse> searchBooks(@RequestParam String q) {
         return bookService.searchBooks(q);
     }
+
 //    @GetMapping("/search")
 //    public Page<BookResponse> searchBooks(
 //            @RequestParam String q,
